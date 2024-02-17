@@ -1,82 +1,96 @@
 #!/usr/bin/python
+from pathlib import WindowsPath
 
-data = "UUU"
-bps = 115200
+# Issue with second start char's start bit.
+'''
+Comms Definitions
+'''
+baudrate = 1_000_000
 num_databits = 8
 parity = 'n'
 num_stopbits = 1
 
-lvl_0 = 3.3
-lvl_1 = 0.0
+init_quiet_time = 100.0  # microseconds
+inter_byte_quiet_time = 1.0  # microseconds
 
-if type(data) is str:
-    data = [data]
+'''
+PHY definitions
+'''
+lvl_1 = 0.1
+lvl_0 = 0.0
+idle_state = lvl_1
+rise_time = 0.001  # microseconds
+fall_time = rise_time  # microseconds
 
-out = oldout = 0
-time = 0.0
-timestep = 1.0 / bps
-risetime = falltime = timestep / 20.0
-idletime = timestep * (num_databits + 3)
-
-
-def do_timestep(output, step):
-    global time
-    global out, oldout
-    global lvl_0, lvl_1
-
-    out = output
-    time_diff = 0
-
-    if oldout != out:
-        if oldout > out:
-            # fall
-            time_diff = falltime
-        else:
-            # rise
-            time_diff = risetime
-        lvl = (lvl_0 if oldout == 0 else lvl_1)
-        print("{0:g} {1:g}".format(time, lvl))
-        lvl = (lvl_0 if out == 0 else lvl_1)
-        print("{0:g} {1:g}".format((time + time_diff), lvl))
-
-        oldout = out
-
-    time += step
-    return time
+'''
+Calculated values
+'''
+bit_time: float = 1 / baudrate / 1e-6  # microseconds
 
 
-do_timestep(0, 0)
+def create_bit(bit_val: bool) -> str:
+    lvl = lvl_1 if bit_val else lvl_0
+    time_del = rise_time if bit_val else fall_time
+    return f'+{time_del:.4f}u {lvl}\n+{(bit_time - time_del):.4f}u {lvl}\n'
 
-# idle
-do_timestep(0, idletime)
 
-for sentence in data:
-    # start bit
-    out = 1
-    do_timestep(out, timestep)
+def create_byte_char(char_val: str) -> str:
+    pwl_str = ""
+    par_val = False
 
-    for char in sentence:
-        # print("# {}").format(char);
-        par = 0
+    pwl_str += create_bit(False)  # Start bit
 
-        for bit in range(0, num_databits):
-            out = (ord(char) >> bit) & 1
-            par = bool(parity) ^ bool(out)
+    for bit_num in range(num_databits):
+        bit_val = bool((ord(char_val) >> bit_num) & 1)
+        par_val = par_val ^ bit_val
+        pwl_str += create_bit(bit_val)
 
-            do_timestep(out, timestep)
+    for ii in range(num_stopbits):
+        pwl_str += create_bit(True)
 
-        if parity == 'e':
-            # even parity
-            out = par
-        elif parity == 'o':
-            # odd parity
-            out = ~par
-        do_timestep(out, timestep)
+    pwl_str += '\n'  # newline for the sake of organizing the file with a blank line
+    return pwl_str
 
-        # stop bits
-        out = 0
-        do_timestep(out, (timestep * num_stopbits))
 
-    # idle
-    out = 0
-    do_timestep(out, idletime)
+def create_byte_int(int_val: int) ->str:
+    pwl_str = ""
+    par_val = False
+
+    pwl_str += create_bit(False)  # Start bit
+
+    for bit_num in range(num_databits):
+        bit_val = bool((int_val >> bit_num) & 1)
+        par_val = par_val ^ bit_val
+        pwl_str += create_bit(bit_val)
+
+    for ii in range(num_stopbits):
+        pwl_str += create_bit(True)
+
+    pwl_str += '\n'  # newline for the sake of organizing the file with a blank line
+    return pwl_str
+
+
+def create_string_pwl(str_val: str) -> str:
+    pwl_str = ""
+    for chars in str_val:
+        pwl_str += create_byte_char(chars)
+    return pwl_str
+
+
+def create_idle_pwl(duration: int) ->str:
+    """
+    Creates a delay at the idle state of duration length in microseconds.
+
+    :param duration: duration of idle time in microseconds
+    :return: pwl string to write
+    """
+    time_del = rise_time if idle_state else fall_time
+    return f'+{time_del:.4f}u {idle_state}\n+{(duration - time_del):.4f}u {idle_state}\n\n'
+
+
+if __name__ == '__main__':
+    output_file_path = WindowsPath('C:/dev_SK/jamystor/New Text Document_.txt')
+    with open(output_file_path, "w") as file:
+        file.write(create_idle_pwl(100))
+        file.write(create_string_pwl("abc"))
+        file.write(create_byte_int(85))  # 0x55 in decimal

@@ -91,6 +91,11 @@ def create_idle_pwl(duration: int) ->str:
 if __name__ == '__main__':
     output_file_path = WindowsPath('C:/dev_SK/jamystor/New Text Document_.txt')
     with open(output_file_path, "w") as file:
-        file.write(create_idle_pwl(100))
-        file.write(create_string_pwl("abc"))
-        file.write(create_byte_int(85))  # 0x55 in decimal
+        for ii in range (10):
+            file.write(create_idle_pwl(50))
+            file.write(create_string_pwl("abc"))
+
+        file.write(create_idle_pwl(50))
+        for ii in range(255):
+            file.write(create_byte_int(ii))
+            file.write(create_idle_pwl(6))
